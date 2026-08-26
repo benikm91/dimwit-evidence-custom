@@ -15,12 +15,12 @@ def _dataset(n=200):
     return x, y
 
 
-def mse_buggy(pred, target):
+def mse_as_written_upstream(pred, target):
     """pred [n, 1], target [n] -> residuals [n, n]. No error, no warning."""
     return float(((pred - target) ** 2).mean())
 
 
-def mse_fixed(pred, target):
+def mse_strict(pred, target):
     """Both [n]. The only broadcast is the intended one: none."""
     assert pred.shape == target.shape, f"shape mismatch {pred.shape} vs {target.shape}"
     return float(((pred - target) ** 2).mean())
@@ -53,14 +53,14 @@ def test_buggy_loss_has_no_shape_complaint():
     pred = np.zeros((100, 1))
     target = np.zeros(100)
     assert (pred - target).shape == (100, 100)
-    assert mse_buggy(pred, target) == 0.0
+    assert mse_as_written_upstream(pred, target) == 0.0
 
 
 def test_buggy_and_fixed_losses_differ():
     pred_col = np.linspace(0, 1, 100)[:, None]
     target = np.linspace(0, 1, 100)
-    assert mse_buggy(pred_col, target) > 0.0          # residual matrix is not zero
-    assert mse_fixed(pred_col[:, 0], target) == 0.0   # the predictions are exact
+    assert mse_as_written_upstream(pred_col, target) > 0.0          # residual matrix is not zero
+    assert mse_strict(pred_col[:, 0], target) == 0.0   # the predictions are exact
 
 
 def test_buggy_training_finds_the_wrong_weights():
