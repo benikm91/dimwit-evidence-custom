@@ -16,7 +16,24 @@ closed-form solution, refused to reach its optimum. PyTorch's resolution was a
 
 ## Why it is interesting
 
-This is the case where **named axes alone are not enough**. Haliax broadcasts by name
-implicitly, so subtracting a `{batch}` array from a `{batch, out}` array is just as quiet
-there. What prevents it in DimWit is the separate elementwise operators: `-` demands
-identical shapes, `-!` broadcasts and has to be written down.
+The upstream discussion never settled whether the broadcast was intended behaviour. That
+is the point: with untyped shapes the question only comes up once someone's regression
+fails to converge, and it then has to be answered for every existing caller at once —
+which is why the resolution could only be a warning.
+
+A strict, conceptually scoped signature removes the issue at the type level rather than
+patching it. `mse(pred: Tensor1[Batch], target: Tensor1[Batch])` forces the question at
+the moment the loss is first written: does this function accept a prediction with an
+output axis, or not? Whatever the answer, it is recorded, checked, and cannot be reached
+by accident later.
+
+## Files
+
+| file | what it shows |
+|---|---|
+| `plain.py` | NumPy reconstruction, buggy + fixed, plus the PyTorch warning |
+| `plain_jax.py` | the same in JAX, with the same hand-written shape assertion as the fix |
+| `jaxtyping_case.py` | `mse_strict` (caught at run time) and `mse_as_written_upstream` (missed) |
+| `Buggy.scala` | both jaxtyping signatures in DimWit, in one file as they are there — neither can reach the defect |
+| `Fixed.scala` | `mseStrict`, with a `@main` check that runs it |
+| `PLAIN_SOLUTION.md`, `PLAIN_JAX_SOLUTION.md`, `JAXTYPING_SOLUTION.md`, `DIMWIT_SOLUTION.md` | verdicts |

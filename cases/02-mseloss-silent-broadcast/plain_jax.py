@@ -2,14 +2,18 @@
 
 import jax
 import jax.numpy as jnp
+import pytest
 
 
 def mse_buggy(pred, target):
+    """pred [n, 1], target [n] -> residuals [n, n]. No error, no warning."""
     return jnp.mean((pred - target) ** 2)
 
 
 def mse_fixed(pred, target):
-    return jnp.mean((pred.reshape(-1) - target) ** 2)
+    """The same guard as `plain.py::mse_fixed`: the shapes have to agree exactly."""
+    assert pred.shape == target.shape, f"shape mismatch {pred.shape} vs {target.shape}"
+    return jnp.mean((pred - target) ** 2)
 
 
 # --------------------------------------------------------------------------- tests
@@ -21,12 +25,18 @@ def test_jax_broadcasts_silently():
     assert float(mse_buggy(pred, target)) == 0.0
 
 
+def test_fixed_rejects_the_column_vector():
+    """The assertion is the whole fix, and it has to be written by hand."""
+    with pytest.raises(AssertionError):
+        mse_fixed(jnp.zeros((100, 1)), jnp.zeros(100))
+
+
 def test_jit_accepts_the_buggy_loss():
     """Shape inference under jit proves well-formedness, not intent."""
     pred = jnp.linspace(0, 1, 100).reshape(100, 1)
     target = jnp.linspace(0, 1, 100)
     assert float(jax.jit(mse_buggy)(pred, target)) > 0.0
-    assert float(jax.jit(mse_fixed)(pred, target)) < 1e-12
+    assert float(jax.jit(mse_fixed)(pred.reshape(-1), target)) < 1e-12
 
 
 def test_gradients_are_computed_happily_from_the_wrong_loss():
