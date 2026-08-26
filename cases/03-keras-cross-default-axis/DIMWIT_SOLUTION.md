@@ -2,42 +2,21 @@
 
 **Category: `compile-time detection`**
 
-Verified: `scala-cli compile Buggy.scala` fails with
-
 ```
-Found:    dimwit.tensor.Tensor1[Case03Buggy.Sample, dimwit.Float32]
-Required: dimwit.tensor.Tensor1[Case03Buggy.Component, dimwit.Float32]
-    zipvmap(Axis[Component])(a, b)((x: Tensor1[Sample, ...], y: ...) => cross3(x, y))
+./Buggy.scala:25:102
+Found:    (y : dimwit.tensor.Tensor1[Case03Buggy.Rgb, dimwit.Float32])
+Required: dimwit.tensor.Tensor1[Case03Fixed.Spatial, dimwit.tensor.DType.Float32]
+    zipvmap(Axis[Sample])(a, b)((x: Tensor1[Spatial, Float32], y: Tensor1[Rgb, Float32]) => cross(x, y))
+                                                                                                      ^
 ```
 
-## Why it works
-
-`cross3` is typed `Tensor1[Component, Float32] => Tensor1[Component, Float32]`. The
-component axis is part of the function's identity, not something recovered from the shape
-at call time. Two consequences:
-
-1. **There is no default to get wrong.** DimWit has no notion of "the axis that happens to
-   have extent 3", because axes are not addressed by extent at all. The entire mechanism
-   that produced the upstream bug is absent.
-2. **Batching over the wrong axis is a type error.** `zipvmap(Axis[Component])` hands
-   `cross3` the `Sample` slices, and `Sample` is not `Component` — even though both have
-   extent 3 in the failing example.
-
-## Why this case matters most for the paper
-
-It separates the two candidate explanations for DimWit's benefit. It is *not* that DimWit
-knows more about sizes — the sizes are identical in both programs and would be identical
-under any size-based checker. It is that `Sample` and `Component` are **different types**,
-so the compiler can reject a program that is perfectly well-shaped.
-
-Every other tool in the comparison is size-based, and every one of them misses this.
-
-## Honest limits
-
-* The guarantee comes from `cross3`'s signature. A DimWit author who wrote
-  `cross3(t: Tensor1[L, Float32])` generically, for any label `L`, would get no protection —
-  the types would unify with `Sample` happily. Naming the axis in the API is the discipline;
-  the type system enforces the discipline once adopted, it does not supply it.
-* `Fixed.scala` still fails at run time if the `Component` axis does not have extent 3
-  (the `slice(Axis[Component].at(2))` is a runtime bounds check). Extents remain runtime
-  values in DimWit.
+The upstream defect needs a permissive scope to exist in: `cross` is conceptually a function
+of two 3-vectors, and only because the libraries widened it to arbitrary rank with an axis
+argument per operand is there a default to disagree about. `cross[L](v1: Tensor1[L, V], v2: Tensor1[L, V]): Tensor1[L, V]`
+is that concept at its minimal scope — vectors in, both on one axis, and the axis survives
+into the result, so `axisa`, `axisb` and `axisc` collapse into the `L` the caller already
+fixed by choosing what to pass. `Buggy.scala` uses that same definition and only gets the
+call wrong: every axis in play has extent 3, so `torch.cross` would find one in each operand
+and return a number, whereas here the names carry the semantics and a spatial vector cannot
+be crossed with a colour triple. Batching is a separate, named concern — `zipvmap(Axis[Sample])`
+says which axis it maps over — rather than a default hidden in the operation.
