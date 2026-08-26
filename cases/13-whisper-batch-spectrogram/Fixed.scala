@@ -1,12 +1,13 @@
 //> using scala 3.8.1
-//> using repository ivy2Local
-//> using dep ch.contrafactus::dimwit-core:0.2-SNAPSHOT
+//> using dep ch.contrafactus::dimwit-core:0.1.0
 
 /** Case 13 (fixed) — mel spectrogram, DimWit.
   *
-  * The extractor is typed for one waveform: `Tensor1[Sample, Float32]` in,
-  * `Tensor2[Frame, Mel, Float32]` out. Batching is `vmap`, and the framing slices
-  * `Axis[Sample]` by name, so it cannot slice a batch even if one is added later.
+  * Same interface as `jaxtyping_case.py`. The extractor is typed for one waveform:
+  * `Tensor1[Sample, Float32]` in, `Tensor2[Frame, Mel, Float32]` out. Batching is `vmap`,
+  * and the framing slices
+  * `Axis[Sample]` by name rather than by position, so it cannot slice a batch even if one
+  * is added later.
   */
 object Case13Fixed:
 
@@ -21,7 +22,7 @@ object Case13Fixed:
   private val WindowSize = 4
   private val Hop = 2
 
-  def logMel(
+  def logMelSingle(
       audio: Tensor1[Sample, Float32],
       filters: Tensor2[Window, Mel, Float32]
   ): Tensor2[Frame, Mel, Float32] =
@@ -34,11 +35,11 @@ object Case13Fixed:
     val framed: Tensor2[Frame, Window, Float32] = stack(frames, Axis[Frame])
     framed.vmap(Axis[Frame])(w => w.dot(Axis[Window])(filters).abs.log)
 
-  def logMelBatched(
+  def logMelBatchedFixed(
       batch: Tensor2[Batch, Sample, Float32],
       filters: Tensor2[Window, Mel, Float32]
   ): Tensor3[Batch, Frame, Mel, Float32] =
-    batch.vmap(Axis[Batch])(clip => logMel(clip, filters))
+    batch.vmap(Axis[Batch])(clip => logMelSingle(clip, filters))
 
   @main def case13Check(): Unit =
     dimwit.initialize()
@@ -46,11 +47,11 @@ object Case13Fixed:
     val filters = Tensor(Shape(Axis[Window] -> 4, Axis[Mel] -> 3)).fill(1.0f)
     val audio = Tensor1(Axis[Sample]).fromArray(Array.tabulate(12)(i => (i + 1).toFloat))
 
-    val single = logMel(audio, filters)
+    val single = logMelSingle(audio, filters)
     assert(single.shape(Axis[Frame]) == 5 && single.shape(Axis[Mel]) == 3, "5 frames of 3 mels")
 
     val batch = Tensor(Shape(Axis[Batch] -> 2, Axis[Sample] -> 12))
       .fromArray(Array.tabulate(24)(i => (i + 1).toFloat))
-    val many = logMelBatched(batch, filters)
+    val many = logMelBatchedFixed(batch, filters)
     assert(many.shape(Axis[Batch]) == 2 && many.shape(Axis[Frame]) == 5)
     println("case13 ok: framing slices Sample, batching added by vmap")
