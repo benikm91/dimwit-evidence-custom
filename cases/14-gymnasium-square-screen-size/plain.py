@@ -1,6 +1,21 @@
-"""Case 14 — a single `screen_size` forcing square observations (NumPy).
+"""Case 14 — a (width, height) API meeting a (height, width) API (NumPy).
 
-Original: Farama-Foundation/Gymnasium#1312.
+Original: Farama-Foundation/Gymnasium#1312, "Allow `AtariPreprocessing` non-square
+observations".
+
+`AtariPreprocessing` passes `screen_size` straight into `cv2.resize`, whose `dsize` is
+ordered **(width, height)**; the array that comes back is ordered **(height, width)**. The
+wrapper then declared its observation space in the first order while producing the second:
+
+    _shape = self.screen_size + (1 if grayscale_obs else 3,)      # (W, H, C)  -- wrong
+    _shape = (self.screen_size[1], self.screen_size[0], ...)      # (H, W, C)  -- the fix
+
+Below, that boundary is distilled to its two halves: `inner_resize` speaks (width, height)
+like `cv2.resize`, `resize_*` speaks (height, width) like the rest of the pipeline. The
+defect is a pair of extents crossing between them without being flipped.
+
+It shipped because `screen_size` had always been square, and (s, s) is the one input on
+which the two conventions agree.
 """
 
 import numpy as np
@@ -8,24 +23,28 @@ import numpy as np
 ATARI_FRAME = (210, 160)
 
 
-def _resize(frame, out_hw):
-    """Nearest-neighbour resize, enough to show what the aspect ratio does."""
-    out_h, out_w = out_hw
+def inner_resize(frame, dsize):
+    """The `cv2.resize` half of the boundary.
+
+    `dsize` is **(width, height)**, and the returned array is **(height, width)**. Both
+    conventions are correct; they are simply not the same one.
+    """
+    out_w, out_h = dsize
     in_h, in_w = frame.shape
     rows = (np.arange(out_h) * in_h // out_h).clip(0, in_h - 1)
     cols = (np.arange(out_w) * in_w // out_w).clip(0, in_w - 1)
     return frame[np.ix_(rows, cols)]
 
 
-def preprocess_buggy(frame, screen_size: int):
-    """As shipped: one integer, used for both axes."""
-    return _resize(frame, (screen_size, screen_size))
+def resize_buggy(frame, size_hw):
+    """As shipped: advertises (height, width) and forwards it unflipped."""
+    return inner_resize(frame, size_hw)
 
 
-def preprocess_fixed(frame, screen_size):
-    """After PR #1312: `screen_size` is (height, width)."""
-    height, width = screen_size
-    return _resize(frame, (height, width))
+def resize_fixed(frame, size_hw):
+    """After PR #1312: the extents are flipped at the boundary."""
+    height, width = size_hw
+    return inner_resize(frame, (width, height))
 
 
 def _frame():
@@ -34,30 +53,32 @@ def _frame():
 
 # --------------------------------------------------------------------------- tests
 
-def test_the_buggy_api_cannot_express_a_non_square_target():
-    """The defect is an API limitation: there is no argument for a rectangle."""
-    out = preprocess_buggy(_frame(), 84)
-    assert out.shape == (84, 84)
+def test_the_swap_is_not_caught():
+    """MISSED. No exception, no warning: a well-formed frame of the wrong orientation."""
+    assert resize_buggy(_frame(), (84, 64)).shape == (64, 84)
 
 
-def test_the_aspect_ratio_is_destroyed():
-    """210:160 is 1.31:1; the output is 1:1. Every observation is vertically squashed."""
-    frame = _frame()
-    assert frame.shape[0] / frame.shape[1] > 1.3
-    assert preprocess_buggy(frame, 84).shape[0] / preprocess_buggy(frame, 84).shape[1] == 1.0
+def test_the_fixed_version_honours_the_advertised_order():
+    assert resize_fixed(_frame(), (84, 64)).shape == (84, 64)
 
 
-def test_the_fixed_api_preserves_it_when_asked():
-    out = preprocess_fixed(_frame(), (84, 64))
-    assert out.shape == (84, 64)
-    assert abs(out.shape[0] / out.shape[1] - 210 / 160) < 0.02
+def test_a_square_target_hides_the_defect_entirely():
+    """Why it shipped: (s, s) is the fixed point of the two conventions."""
+    square_buggy = resize_buggy(_frame(), (84, 84))
+    square_fixed = resize_fixed(_frame(), (84, 84))
+    assert square_buggy.shape == square_fixed.shape == (84, 84)
+    assert np.array_equal(square_buggy, square_fixed)
 
 
-def test_nothing_here_is_a_shape_error():
-    """Both outputs are valid frames. The mistake is semantic, not structural."""
-    assert preprocess_buggy(_frame(), 84).ndim == preprocess_fixed(_frame(), (84, 64)).ndim == 2
+def test_both_outputs_are_valid_2d_frames():
+    """Nothing here is a structural error. Both results are usable arrays."""
+    buggy, fixed = resize_buggy(_frame(), (84, 64)), resize_fixed(_frame(), (84, 64))
+    assert buggy.ndim == fixed.ndim == 2
+    assert buggy.size == fixed.size
 
 
-def test_a_square_input_would_have_made_the_two_identical():
-    square = np.zeros((160, 160))
-    assert preprocess_buggy(square, 84).shape == preprocess_fixed(square, (84, 84)).shape
+def test_the_declared_shape_and_the_actual_array_disagree():
+    """The upstream symptom: `observation_space.shape` promised what was never produced."""
+    declared = (84, 64)
+    actual = resize_buggy(_frame(), declared).shape
+    assert actual != declared and actual == declared[::-1]

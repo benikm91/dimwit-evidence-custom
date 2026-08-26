@@ -2,12 +2,21 @@
 
 **Category: `missed`**
 
-Nothing here is a shape *error*. `preprocess_buggy(frame, 84)` returns an `84 x 84` array,
-which is exactly what the program asked for. The defect is that the program should not have
-asked for it: Atari frames are `210 x 160` and the aspect ratio is destroyed
-(`test_the_aspect_ratio_is_destroyed`).
+`resize_buggy(frame, (84, 64))` returns a `(64, 84)` array. Nothing raises: both extents are
+positive integers, both indexing operations are in bounds, and the result is a perfectly
+well-formed 2-D frame. It is simply the transpose of the one that was asked for
+(`test_the_swap_is_not_caught`).
 
-This is an **API expressiveness** fault. The parameter `screen_size: int` cannot say
-"84 tall by 64 wide", so every user of the wrapper gets a squashed observation and has no
-way to opt out. It is the kind of defect a type system reaches only if the type of the
-parameter is wrong — and `int` is a perfectly good type for a number.
+The mismatch is between two *conventions*, and a tuple carries no convention. `(84, 64)`
+means "height then width" on one side of the call and "width then height" on the other, and
+the only record of which is which is the parameter name — `dsize` versus `size_hw` — which
+NumPy never sees.
+
+`test_a_square_target_hides_the_defect_entirely` is why it reached production: `(s, s)` is
+the fixed point of the two orderings, so for as long as `screen_size` was square the two
+functions were not merely equivalent but bit-identical. The defect was latent in the code
+for as long as nobody exercised the one input that could distinguish them.
+
+`test_the_declared_shape_and_the_actual_array_disagree` states the upstream symptom in one
+line: the shape the wrapper advertised was the reverse of the shape it produced, and only a
+consumer that cared about orientation would ever notice.
