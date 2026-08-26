@@ -10,14 +10,14 @@ CENTERS = np.array([0.0, 0.5, 1.0, 1.5])  # four basis-function centres
 
 
 def ft_ao_buggy(Gv, centers=CENTERS):
-    """As shipped: `Gv` is used at whatever rank it arrives with."""
+    """As shipped. The body assumes `Gv` is (N, 3) and never checks that it is."""
     G = np.asarray(Gv, dtype=float)
     phase = np.exp(-0.5 * (G**2).sum(axis=-1))
     return phase[..., None] * centers
 
 
 def ft_ao_fixed(Gv, centers=CENTERS):
-    """After PR #3340."""
+    """After PR #3340: one line at the top, restoring the assumption the body makes."""
     G = np.asarray(Gv, dtype=float).reshape(-1, 3)
     phase = np.exp(-0.5 * (G**2).sum(axis=-1))
     return phase[..., None] * centers
@@ -34,7 +34,12 @@ def test_a_proper_grid_behaves_the_same_either_way():
 
 
 def test_a_single_vector_silently_loses_a_rank():
-    """Erroneous behaviour: (4,) instead of (1, 4). This is the upstream regression test."""
+    """Erroneous behaviour: (4,) instead of (1, 4). This is the upstream regression test.
+
+    The body reduces over the last axis expecting one number per G-vector. Given a bare
+    `(3,)` it reduces the *only* axis, so `phase` is a scalar, and the multiply against
+    `centers` then broadcasts a scalar over the centres instead of a column over a grid.
+    """
     g = GRID[1]
     ref = ft_ao_fixed(g.reshape(1, 3))
     dat = ft_ao_buggy(g)
