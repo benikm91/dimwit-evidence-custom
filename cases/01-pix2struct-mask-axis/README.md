@@ -35,6 +35,6 @@ padding tokens.
 | `plain.py` | NumPy reconstruction, buggy + fixed, with tests |
 | `plain_jax.py` | the same in JAX |
 | `jaxtyping_case.py` | annotated with jaxtyping; passes for self-attention, catches cross-attention |
-| `Buggy.scala` | the DimWit transliteration of the mistake — does not compile |
-| `Fixed.scala` | the DimWit program that is correct by construction |
+| `Buggy.scala` | the mistake in DimWit: `[:, None, :, None]` written out with the two singleton axes named — does not compile |
+| `Fixed.scala` | the DimWit program, in which the expansion is not needed at all |
 | `PLAIN_SOLUTION.md`, `PLAIN_JAX_SOLUTION.md`, `JAXTYPING_SOLUTION.md`, `DIMWIT_SOLUTION.md` | verdicts |
