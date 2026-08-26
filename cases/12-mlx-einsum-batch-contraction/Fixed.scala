@@ -1,12 +1,11 @@
 //> using scala 3.8.1
-//> using repository ivy2Local
-//> using dep ch.contrafactus::dimwit-core:0.2-SNAPSHOT
+//> using dep ch.contrafactus::dimwit-core:0.1.0
 
 /** Case 12 (fixed) — batched contraction, DimWit.
   *
-  * `dot` names the axis it sums over, and that axis must exist in BOTH operands. The batch
-  * axis is not a letter in a subscript string; it is added by `vmap` and is not part of the
-  * contraction at all.
+  * Same interface as `jaxtyping_case.py::batched_matmul_fixed`. `dot` names the axis it
+  * sums over, and that axis must exist in BOTH operands. The batch axis is not a letter in
+  * a subscript string; it is added by `vmap` and is not part of the contraction at all.
   */
 object Case12Fixed:
 
@@ -24,7 +23,7 @@ object Case12Fixed:
   ): Tensor2[Row, Col, Float32] =
     a.dot(Axis[Inner])(b)
 
-  def batchedMatmul(
+  def batchedMatmulFixed(
       a: Tensor3[Batch, Row, Inner, Float32],
       b: Tensor2[Inner, Col, Float32]
   ): Tensor3[Batch, Row, Col, Float32] =
@@ -38,7 +37,7 @@ object Case12Fixed:
       .fromArray(Array.tabulate(27)(_.toFloat))
     val b = Tensor(Shape(Axis[Inner] -> 3, Axis[Col] -> 4)).fill(1.0f)
 
-    val out = batchedMatmul(a, b)
+    val out = batchedMatmulFixed(a, b)
     assert(out.shape(Axis[Batch]) == 3 && out.shape(Axis[Row]) == 3 && out.shape(Axis[Col]) == 4)
     // with b all ones every output entry is the row sum of a
     val first = out.slice(Axis[Batch].at(0)).slice(Axis[Row].at(0)).toArray
