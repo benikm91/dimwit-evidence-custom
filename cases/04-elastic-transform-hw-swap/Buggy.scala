@@ -1,48 +1,29 @@
 //> using scala 3.8.1
-//> using repository ivy2Local
-//> using dep ch.contrafactus::dimwit-core:0.2-SNAPSHOT
+//> using dep ch.contrafactus::dimwit-core:0.1.0
+//> using file Fixed.scala
 
-/** Case 04 (buggy) — elastic displacement normalisation, DimWit. DOES NOT COMPILE.
+/** Case 04 (buggy) — elastic displacement normalisation, DimWit. THIS ONE COMPILES.
   *
-  * Transliteration of `dx * alpha[0] / size[0]`: the horizontal displacement is normalised
-  * by the height. In DimWit there is no positional `size[0]`; the author has to name the
-  * axis, and naming the wrong one is rejected because `AxisExtent[Height]` is not
-  * `AxisExtent[Width]`.
-  *
-  * Expected compiler error:
-  *
-  *   Found:    AxisExtent[Case04Buggy.Height]
-  *   Required: AxisExtent[Case04Buggy.Width]
+  * `size[0]` cannot be written, so the author has to name the axis — and then divides the
+  * horizontal displacement by `Axis[Height]` in as many words. Wrong in a way a reader can
+  * see, but `size(Axis[L])` hands back a plain `Int`, so nothing checks it.
   */
 object Case04Buggy:
 
   import dimwit.*
+  import dimwit.Conversions.given
+  import dimwit.stats.Uniform
+  import Case04Fixed.{Direction, Height, KEY, Width}
 
-  trait Height derives Label
-  trait Width derives Label
+  def displacementBuggy(
+      alpha: (Float, Float),
+      size: Shape[(Height, Width)]
+  ): Tensor3[Height, Width, Direction, Float32] =
+    val noise = Uniform(Tensor(size).fill(-1.0f), Tensor(size).fill(1.0f))
+    val (kx, ky) = KEY.split2()
 
-  def normaliseHorizontal(
-      dx: Tensor2[Height, Width, Float32],
-      alpha: Float,
-      width: AxisExtent[Width]
-  ): Tensor2[Height, Width, Float32] =
-    dx *! Tensor0(alpha / width.size.toFloat)
+    // Named dimensions makes bug more obvious (x - Height), but compiles
+    val dx = noise.sample(kx) *! alpha._1 /! size(Axis[Height])
+    val dy = noise.sample(ky) *! alpha._2 /! size(Axis[Width]) 
 
-  def normaliseVertical(
-      dy: Tensor2[Height, Width, Float32],
-      alpha: Float,
-      height: AxisExtent[Height]
-  ): Tensor2[Height, Width, Float32] =
-    dy *! Tensor0(alpha / height.size.toFloat)
-
-  def displacementField(
-      dx: Tensor2[Height, Width, Float32],
-      dy: Tensor2[Height, Width, Float32],
-      alpha: Float
-  ): (Tensor2[Height, Width, Float32], Tensor2[Height, Width, Float32]) =
-    val shape = dx.shape
-    (
-      // `size[0]` is the height. Handing it to the horizontal normaliser is the bug.
-      normaliseHorizontal(dx, alpha, shape.extent(Axis[Height])),
-      normaliseVertical(dy, alpha, shape.extent(Axis[Width]))
-    )
+    stack(Seq(dx, dy), Axis[Direction], afterAxis = Axis[Width])

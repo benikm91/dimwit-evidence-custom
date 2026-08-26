@@ -1,50 +1,19 @@
 # DimWit — verdict
 
-**Category: `compile-time detection`, conditional on keeping the extent wrapped**
+**Category: `missed`**
 
-Verified: `scala-cli compile Buggy.scala` fails with
+`scala-cli compile Buggy.scala` succeeds. The defect is a scalar divisor, and
+`size(Axis[Height])` hands back a plain `Int`, so by the time it reaches the arithmetic
+there is nothing left for the type system to check.
 
-```
-Found:    dimwit.tensor.Axis[Case04Buggy.Height]
-Required: dimwit.tensor.Axis[Case04Buggy.Width]
-      normaliseHorizontal(dx, alpha, shape.extent(Axis[Height])),
-                                                  ^^^^^^^^^^^^
-```
+What does change is the failure mode. `size[0]` cannot be written at all: DimWit has no
+positional shape access, so the author has to name the axis, and the buggy line says
+`alpha._1 / size(Axis[Height])` — dividing the *horizontal* displacement by the *height*,
+in as many words. Upstream this was `size[0]` versus `size[1]`, an index slip that survived
+review of both `transforms` and `transforms.v2`. That is a legibility improvement rather
+than a detection, and the paper should label it as one.
 
-## Why it works
-
-Two things have to be true, and only the first is automatic:
-
-1. **`shape.extent(Axis[L])` returns `AxisExtent[L]`, not `Int`.** The extent keeps the
-   identity of the axis it came from, so `AxisExtent[Height]` and `AxisExtent[Width]` are
-   incompatible types. This is the mechanism.
-2. **The API has to accept the wrapped extent.** `normaliseHorizontal(..., width:
-   AxisExtent[Width])` is what makes the mistake statable and therefore checkable.
-
-## The escape hatch, stated plainly
-
-DimWit also offers `shape(Axis[Height]): Int`. Written that way:
-
-```scala
-val h = dx.shape(Axis[Height])   // Int
-val w = dx.shape(Axis[Width])    // Int
-dx *! Tensor0(alpha / h.toFloat) // the bug, and it compiles
-```
-
-the extent has been unwrapped and DimWit is exactly as blind as NumPy. So this row is
-**not** a claim that DimWit catches height/width confusion in general. The honest claim is
-narrower and still worth making:
-
-> DimWit removes *positional* shape access. `size[0]` cannot be written. The author must
-> name the axis, and if they keep the named extent wrapped the compiler checks the choice.
-
-The upstream bug was `size[0]` vs `size[1]` — an index slip, invisible in review. Its DimWit
-counterpart is `Axis[Height]` vs `Axis[Width]` — a naming mistake, visible in review even
-before the compiler weighs in. That is a real improvement in the failure mode even in the
-unwrapped case, but it is a *legibility* argument, not a soundness one, and the paper should
-label it as such.
-
-## Suggested framing for the table
-
-Score this row `compile-time detection` with a footnote, or score it `partly prevented` if
-the table has such a column. Do not score it as an unqualified win.
+DimWit can in principle do better here: `size.extent(Axis[Width])` returns an
+`AxisExtent[Width]`, a different type from `AxisExtent[Height]`, and an API that takes the
+wrapped extent would reject the swap at compile time. It is not used above because the
+straight transliteration of `dx * alpha[0] / size[0]` divides by a number.

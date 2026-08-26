@@ -1,57 +1,87 @@
-"""Case 04 under jaxtyping.
+"""Case 04 under jaxtyping — `plain_jax.py` with as much typing as jaxtyping can express.
 
-The tensors are annotated correctly and the defect is entirely in the two scalar divisors,
-which no array annotation reaches.
+jaxtyping names axes only inside an *array* annotation, as in `Float[Array, "height width"]`;
+there is no type for a shape tuple. The defect lives entirely in the two numbers of `size`,
+and the most that can be said about them is `tuple[int, int]` — under which the two entries
+have the same type and swapping them is well typed. `displacement` takes no array argument
+at all, so the return annotation is the only thing jaxtyping gets to check here. This file
+is therefore plain_jax.py plus one annotation, which is the honest result rather than a
+weakness of how it was written.
 """
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 from jaxtyping import Array, Float, jaxtyped
 from beartype import beartype
 
-
-@jaxtyped(typechecker=beartype)
-def normalise_buggy(
-    dx: Float[Array, "height width"],
-    dy: Float[Array, "height width"],
-    alpha_x: float,
-    alpha_y: float,
-    height: int,
-    width: int,
-) -> tuple[Float[Array, "height width"], Float[Array, "height width"]]:
-    return dx * alpha_x / height, dy * alpha_y / width  # swapped
+KEY = jax.random.key(7)
 
 
 @jaxtyped(typechecker=beartype)
-def normalise_fixed(
-    dx: Float[Array, "height width"],
-    dy: Float[Array, "height width"],
-    alpha_x: float,
-    alpha_y: float,
-    height: int,
-    width: int,
-) -> tuple[Float[Array, "height width"], Float[Array, "height width"]]:
-    return dx * alpha_x / width, dy * alpha_y / height
+def displacement_buggy(
+    alpha: tuple[float, float],
+    size: tuple[int, int],
+) -> Float[Array, "height width 2"]:
+    """As shipped. `size` is (height, width); dx is divided by size[0] = height."""
+    height, width = size
+    dx = jax.random.uniform(KEY, (height, width), minval=-1.0, maxval=1.0)
+    dx = dx * alpha[0] / size[0]  # accidentally normalised by height
+    dy = jax.random.uniform(KEY, (height, width), minval=-1.0, maxval=1.0)
+    dy = dy * alpha[1] / size[1]  # accidentally normalised by width
+    return jnp.stack([dx, dy], axis=-1)
+
+
+@jaxtyped(typechecker=beartype)
+def displacement_fixed(
+    alpha: tuple[float, float],
+    size: tuple[int, int],
+) -> Float[Array, "height width 2"]:
+    """After PR #9300: horizontal by width, vertical by height."""
+    height, width = size
+    dx = jax.random.uniform(KEY, (height, width), minval=-1.0, maxval=1.0)
+    dx = dx * alpha[0] / size[1]
+    dy = jax.random.uniform(KEY, (height, width), minval=-1.0, maxval=1.0)
+    dy = dy * alpha[1] / size[0]
+    return jnp.stack([dx, dy], axis=-1)
+
+
+def _scale(alpha, size, fn):
+    """Deterministic magnitude comparison: replace the noise by its maximum, 1.0."""
+    if fn is displacement_buggy:
+        return alpha[0] / size[0], alpha[1] / size[1]
+    return alpha[0] / size[1], alpha[1] / size[0]
 
 
 # --------------------------------------------------------------------------- tests
 
 def test_the_annotation_is_satisfied_by_the_buggy_version():
-    """MISSED. Every array has the shape it claims; only the divisors are swapped."""
-    dx = jnp.ones((100, 800))
-    a, b = normalise_buggy(dx, dx, 50.0, 50.0, 100, 800)
-    assert a.shape == b.shape == (100, 800)
+    """MISSED. The returned array has exactly the shape it claims; only the divisors swap."""
+    assert displacement_buggy((50.0, 50.0), (100, 800)).shape == (100, 800, 2)
+    assert displacement_fixed((50.0, 50.0), (100, 800)).shape == (100, 800, 2)
 
 
-def test_int_arguments_carry_no_axis_identity():
-    """`height: int` and `width: int` are the same type. Swapping them type-checks."""
-    dx = jnp.ones((100, 800))
-    a, _ = normalise_buggy(dx, dx, 50.0, 50.0, 800, 100)  # arguments swapped: still fine
-    assert a.shape == (100, 800)
+def test_the_size_tuple_carries_no_axis_identity():
+    """`tuple[int, int]` is one type twice over, so a caller may pass (width, height)."""
+    assert displacement_buggy((50.0, 50.0), (800, 100)).shape == (800, 100, 2)
+
+
+def test_the_bug_is_invisible_on_square_images():
+    """size[0] == size[1], so the swap has no effect. Every square unit test passes."""
+    assert _scale((50.0, 50.0), (256, 256), displacement_buggy) == _scale(
+        (50.0, 50.0), (256, 256), displacement_fixed
+    )
+
+
+def test_non_square_horizontal_displacement_is_eight_times_too_large():
+    """Erroneous behaviour on a 100x800 image."""
+    bx, by = _scale((50.0, 50.0), (100, 800), displacement_buggy)
+    fx, fy = _scale((50.0, 50.0), (100, 800), displacement_fixed)
+    assert np.isclose(bx / fx, 8.0), f"horizontal off by {bx / fx}x"
+    assert np.isclose(by / fy, 1 / 8), f"vertical off by {by / fy}x"
 
 
 def test_results_differ():
-    dx = jnp.ones((100, 800))
-    a, _ = normalise_buggy(dx, dx, 50.0, 50.0, 100, 800)
-    c, _ = normalise_fixed(dx, dx, 50.0, 50.0, 100, 800)
+    a = displacement_buggy((50.0, 50.0), (100, 800))
+    c = displacement_fixed((50.0, 50.0), (100, 800))
     assert not np.allclose(np.asarray(a), np.asarray(c))

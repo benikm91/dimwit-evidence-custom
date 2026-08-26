@@ -2,10 +2,13 @@
 
 **Category: `missed`**
 
-Every array annotation in `jaxtyping_case.py` is truthful and satisfied. The divisors are
-declared `height: int` and `width: int` — the same Python type — so
-`test_int_arguments_carry_no_axis_identity` shows that even *swapping the two arguments at
-the call site* type-checks.
+jaxtyping names axes only inside an *array* annotation. Its whole vocabulary — `Float`,
+`Int`, `Shaped`, … — annotates arrays; there is no type for a shape tuple, so the two
+numbers the defect lives in can be described no more precisely than `tuple[int, int]`, under
+which `(height, width)` and `(width, height)` are the same type
+(`test_the_size_tuple_carries_no_axis_identity`).
 
-jaxtyping's vocabulary covers array axes. The defect lives in the scalars extracted from
-those axes, one step outside that vocabulary.
+`displacement` takes no array argument at all, so the return annotation is the only thing
+jaxtyping gets to check — and it is satisfied, because the returned array really does have
+the shape it claims. `jaxtyping_case.py` is `plain_jax.py` plus that one annotation, which
+is the honest measurement here and not an under-annotated file.

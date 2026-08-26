@@ -11,22 +11,25 @@ RNG = np.random.default_rng(7)
 def displacement_buggy(alpha, size):
     """As shipped. `size` is (height, width); dx is divided by size[0] = height."""
     height, width = size
-    dx = RNG.uniform(-1.0, 1.0, size=(height, width)) * alpha[0] / size[0]
-    dy = RNG.uniform(-1.0, 1.0, size=(height, width)) * alpha[1] / size[1]
+    dx = RNG.uniform(-1.0, 1.0, size=(height, width))
+    dx = dx * alpha[0] / size[0] # accidentally normalised by height
+    dy = RNG.uniform(-1.0, 1.0, size=(height, width))
+    dy = dy * alpha[1] / size[1] # accidentally normalised by width
     return np.stack([dx, dy], axis=-1)
 
 
 def displacement_fixed(alpha, size):
     """After PR #9300: horizontal by width, vertical by height."""
     height, width = size
-    dx = RNG.uniform(-1.0, 1.0, size=(height, width)) * alpha[0] / size[1]
-    dy = RNG.uniform(-1.0, 1.0, size=(height, width)) * alpha[1] / size[0]
+    dx = RNG.uniform(-1.0, 1.0, size=(height, width))
+    dx = dx * alpha[0] / size[1]
+    dy = RNG.uniform(-1.0, 1.0, size=(height, width))
+    dy = dy * alpha[1] / size[0]
     return np.stack([dx, dy], axis=-1)
 
 
 def _scale(alpha, size, fn):
     """Deterministic magnitude comparison: replace the noise by its maximum, 1.0."""
-    height, width = size
     if fn is displacement_buggy:
         return alpha[0] / size[0], alpha[1] / size[1]
     return alpha[0] / size[1], alpha[1] / size[0]

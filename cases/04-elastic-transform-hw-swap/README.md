@@ -22,8 +22,12 @@ times too large — while the vertical displacement is divided by 800 instead of
 
 * **Invisible on square inputs.** Every unit test on a square image passes. The augmentation
   had been shipping wrong for both `transforms` and `transforms.v2`.
-* **The defect is in a scalar, not a tensor.** `size[0]` and `size[1]` are plain `int`s.
-  By the time the divisor reaches the arithmetic, every shape checker in this comparison —
-  including DimWit's — has nothing left to look at *unless the extent kept its identity*.
-  This case is where DimWit's `AxisExtent[L]` earns its keep, and where the escape hatch
-  `shape(Axis[L]): Int` gives it up.
+* **The defect is in a scalar, not a tensor.** `size[0]` and `size[1]` are plain `int`s. By
+  the time the divisor reaches the arithmetic, every checker in this comparison — DimWit
+  included — has nothing left to look at. This is the case that marks the boundary of the
+  thesis: names as types govern *tensors*, and a shape entry that has been read out as a
+  number is no longer one.
+* **What is left is legibility.** DimWit has no positional shape access, so `size[0]` cannot
+  be written and the axis has to be named. The mistake becomes "divide the horizontal
+  displacement by `Axis[Height]`" instead of "index 0", which a reader can catch — but the
+  compiler cannot. See `DIMWIT_SOLUTION.md`.
