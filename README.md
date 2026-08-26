@@ -59,7 +59,7 @@ Verified by `run_all.sh`: **162 Python tests pass**, all 15 `Fixed.scala` compil
 | # | case | source | plain | plain JAX | jaxtyping | **DimWit** |
 |---|---|---|---|---|---|---|
 | 01 | attention mask on the query axis | [transformers#23974](https://github.com/huggingface/transformers/issues/23974) | missed | missed | missed¹ | **compile** |
-| 02 | MSE over `[n,1]` vs `[n]` | [pytorch#16045](https://github.com/pytorch/pytorch/issues/16045) | missed (warns) | missed | missed² | **compile** |
+| 02 | MSE over `[n,1]` vs `[n]` | [pytorch#16045](https://github.com/pytorch/pytorch/issues/16045) | missed (warns) | missed | run-time² | **compile** |
 | 03 | `cross` on the first length-3 axis | [keras#23219](https://github.com/keras-team/keras/pull/23219) | missed | missed | missed | **compile** |
 | 04 | displacement normalised by the wrong side | [torchvision#9299](https://github.com/pytorch/vision/issues/9299) | missed | missed | missed | **compile**³ |
 | 05 | NCHW height/width swapped | [ultralytics#23126](https://github.com/ultralytics/ultralytics/issues/23126) | missed | missed | missed⁴ | **compile** |
@@ -75,15 +75,15 @@ Verified by `run_all.sh`: **162 Python tests pass**, all 15 `Fixed.scala` compil
 | 15 | example fed without its batch axis | SFData `s55237206` | run-time⁶ | missed | run-time | **compile** |
 
 ¹ caught for cross-attention, where the query and key lengths differ; Pix2Struct is self-attention.
-² caught if the loss is annotated `"batch"` on both arguments; missed with the signature the buggy model actually had.
+² caught if the loss is annotated `"batch"` on both arguments — but missed with the signature the buggy model actually had, since `nn.Linear(2, 1)` really does return `[batch, 1]`. Both are in `jaxtyping_case.py`.
 ³ conditional on keeping the extent wrapped as `AxisExtent[Width]` rather than unwrapping it to `Int`.
 ⁴ jaxtyping binds axis names only from *array* annotations, so `height: int` constrains nothing. See case 05.
 ⁵ caught only when the two candidate axes have different extents.
 ⁶ the feature path raised; the label path broadcast silently.
 
 **Totals.** DimWit: 13 compile-time, 2 missed, 0 run-time.
-jaxtyping: 4 unconditional run-time, 5 conditional, 6 missed.
-plain JAX: 1 run-time, 14 missed. plain: 1 run-time, 14 missed (one with a warning).
+jaxtyping: 5 run-time, 10 missed. plain JAX: 3 run-time, 12 missed.
+plain NumPy/PyTorch: 3 run-time, 12 missed (one of those with only a warning).
 
 ## The two DimWit misses are the point of the exercise
 
