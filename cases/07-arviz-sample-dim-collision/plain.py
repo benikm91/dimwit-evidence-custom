@@ -37,6 +37,11 @@ class NamedArray:
         return NamedArray(moved.reshape((n, *moved.shape[len(to_stack):])), (new_name, *rest))
 
 
+def mean_over_user_samples(stacked):
+    """A downstream routine written against the USER's `sample` dimension."""
+    return stacked.mean_over("sample")
+
+
 def stack_buggy(posterior):
     """As shipped: the stacked dimension is called `sample`."""
     return posterior.stack("sample", ("chain", "draw"))
@@ -64,7 +69,7 @@ def test_selection_by_name_now_picks_the_wrong_axis():
     """`mean_over("sample")` was meant to average the user's samples. It averages the draws."""
     stacked = stack_buggy(_posterior_with_a_user_sample_dim())
     assert stacked.axis_of("sample") == 0          # the stacked chain*draw axis
-    averaged = stacked.mean_over("sample")
+    averaged = mean_over_user_samples(stacked)
     assert averaged.data.shape == (5,)             # collapsed the wrong axis
     assert averaged.dims == ("sample",)            # and the survivor still claims the name
 
@@ -73,7 +78,7 @@ def test_fixed_keeps_the_two_dimensions_distinct():
     stacked = stack_fixed(_posterior_with_a_user_sample_dim())
     assert stacked.dims == ("__sample__", "sample")
     assert stacked.axis_of("sample") == 1
-    assert stacked.mean_over("sample").dims == ("__sample__",)
+    assert mean_over_user_samples(stacked).dims == ("__sample__",)
 
 
 def test_the_fix_is_a_convention_not_a_guarantee():
