@@ -1,11 +1,11 @@
 //> using scala 3.8.1
-//> using repository ivy2Local
-//> using dep ch.contrafactus::dimwit-core:0.2-SNAPSHOT
+//> using dep ch.contrafactus::dimwit-core:0.1.0
 
 /** Case 08 (fixed) — flattening the sampling dimensions, DimWit.
   *
-  * There is no `reshape` here. `flatten` records which axes were fused, in which order, in
-  * the label `Chain |*| Draw`, so the transpose and the flatten cannot disagree.
+  * Same interface as `jaxtyping_case.py::to_point_list_fixed`. There is no `reshape` here:
+  * `flatten` records which axes were fused, in which order, in the label `Chain |*| Draw`,
+  * so the transpose and the flatten cannot disagree about the layout.
   */
 object Case08Fixed:
 
@@ -18,7 +18,7 @@ object Case08Fixed:
   /** One row per (chain, draw) pair, one column per team. */
   type PointList = Tensor2[Chain |*| Draw, Team, Float32]
 
-  def toPointList(ds: Tensor3[Team, Draw, Chain, Float32]): PointList =
+  def toPointListFixed(ds: Tensor3[Team, Draw, Chain, Float32]): PointList =
     val ordered = ds.transpose((Axis[Chain], Axis[Draw], Axis[Team]))
     ordered.flatten((Axis[Chain], Axis[Draw]))
 
@@ -37,7 +37,7 @@ object Case08Fixed:
     val ds = Tensor(Shape(Axis[Team] -> 5, Axis[Draw] -> 2, Axis[Chain] -> 3))
       .fromArray(Array.tabulate(5 * 2 * 3)(_.toFloat))
 
-    val points = toPointList(ds)
+    val points = toPointListFixed(ds)
     assert(points.shape(Axis[Chain |*| Draw]) == 6, s"6 (chain, draw) pairs, got ${points.shape(Axis[Chain |*| Draw])}")
     assert(points.shape(Axis[Team]) == 5, s"5 teams, got ${points.shape(Axis[Team])}")
 
