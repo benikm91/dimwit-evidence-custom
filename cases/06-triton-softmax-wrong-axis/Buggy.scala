@@ -1,38 +1,29 @@
 //> using scala 3.8.1
-//> using repository ivy2Local
-//> using dep ch.contrafactus::dimwit-core:0.2-SNAPSHOT
+//> using dep ch.contrafactus::dimwit-core:0.1.0
+//> using file Fixed.scala
 
-/** Case 06 (buggy) — softmax over the batch axis, DimWit.
+/** Case 06 (buggy) — softmax with a `keep_dims` flag, DimWit. DOES NOT COMPILE, on purpose.
   *
-  * THIS FILE COMPILES. That is the finding, not a mistake in the harness.
+  * With softmax defined on a vector — see `Case06Fixed.softmaxVector` — the wrong broadcast
+  * cannot happen: the reduction still drops the dimension, but a scalar returning to a
+  * vector has exactly one axis to land on. `keep_dims` exists only because Python's softmax
+  * takes a tensor of any rank, so its reduction leaves a rank-(n-1) result whose axis has to
+  * be guessed back, and the guess is positional.
   *
-  * `vapply(Axis[Batch])(softmax)` and `vapply(Axis[Class])(softmax)` are both total,
-  * well-typed functions `Tensor2[Batch, Class, Float32] => Tensor2[Batch, Class, Float32]`.
-  * Choosing the wrong reduction axis does not change any shape, so no shape-based type
-  * discipline — DimWit's included — can reject it.
-  *
-  * What DimWit does provide is that the mistake is spelled `Axis[Batch]` rather than
-  * `dim=0`. See DIMWIT_SOLUTION.md.
+  * Passing such a flag here is not merely wrong, it is not expressible: a DimWit reduction's
+  * result type is fixed by the axis it names, and a runtime `Boolean` cannot change a type.
   */
 object Case06Buggy:
 
   import dimwit.*
-  import dimwit.nn.ActivationFunctions.softmax
+  import Case06Fixed.{Col, Row}
 
-  trait Batch derives Label
-  trait Class derives Label
-
-  def probabilities(logits: Tensor2[Batch, Class, Float32]): Tensor2[Batch, Class, Float32] =
-    // Normalises across examples instead of across classes.
-    logits.vapply(Axis[Batch])(softmax)
-
-  @main def case06BuggyDemo(): Unit =
-    dimwit.initialize()
-
-    val logits = Tensor(Shape(Axis[Batch] -> 4, Axis[Class] -> 4))
-      .fromArray(Array.tabulate(16)(_.toFloat))
-
-    val p = probabilities(logits)
-    val rowSums = p.sum(Axis[Class]).toArray
-    assert(!rowSums.forall(s => math.abs(s - 1.0f) < 1e-5f), "expected the rows NOT to be distributions")
-    println(s"case06 buggy: compiled and ran; row sums are ${rowSums.mkString(", ")} instead of 1")
+  def softmaxBuggy(
+      x: Tensor2[Row, Col, Float32],
+      keepDims: Boolean
+  ): Tensor2[Row, Col, Float32] =
+    // `z = x - max(x, _dim, keep_dims=keep_dims)` => compile-error: there is no such argument
+    // keepDims does not make sense with strict types and minimal scoping.
+    val z = x -! x.max(Axis[Col], keepDims)
+    val num = z.exp
+    num /! num.sum(Axis[Col], keepDims)
